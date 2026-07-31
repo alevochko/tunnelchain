@@ -17,6 +17,7 @@ TunnelChain is a native macOS application that manages nested VPN and proxy tunn
 - [Features](#features)
 - [Architecture](#architecture)
 - [Requirements](#requirements)
+- [Install](#install)
 - [Getting started](#getting-started)
 - [Project structure](#project-structure)
 - [Documentation](#documentation)
@@ -148,7 +149,7 @@ There is no hard-coded “full tunnel” or “split tunnel” mode. That behavi
 
 - Subscription URL import (`https://…`)
 - Hysteria2, Trojan, Shadowsocks, SOCKS, AmneziaWG connect
-- Full diagnostics suite (leak check, MTU tuner, speed test)
+- Full diagnostics (nesting leak check, throughput, DNS checks, Doctor)
 - iOS / Android
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan.
@@ -186,17 +187,75 @@ Full diagrams, data model, and packet-path details: [docs/AR.md](docs/AR.md).
 
 ## Requirements
 
-- **macOS** (developed and tested on recent macOS versions)
-- **Flutter** SDK `^3.12`
-- **Xcode** command-line tools (for macOS build and Swift helper)
-- **sing-box** binary available to the helper (see project setup / helper docs)
-- Administrator approval for the privileged helper on first connect
+- **macOS 13+** (Ventura or later)
+- **Apple Silicon (arm64)** for the pre-built DMG from GitHub Releases  
+  Intel Macs: build locally — see [docs/RELEASE.md](docs/RELEASE.md)
+- Administrator password on first **Connect** (unsigned builds use an elevated fallback instead of the XPC helper)
+- **sing-box** is **bundled inside the app** — no Homebrew install required
+
+For development from source you also need Flutter `^3.12` and Xcode command-line tools.
+
+---
+
+## Install
+
+### Download
+
+Get the latest `.dmg` from **[GitHub Releases](https://github.com/alevochko/tunnelchain/releases)**.
+
+Current release: **[v1.0.0](https://github.com/alevochko/tunnelchain/releases/tag/v1.0.0)** (`TunnelChain-1.0.0-macos-arm64.dmg`).
+
+Verify the checksum (optional):
+
+```bash
+shasum -a 256 -c TunnelChain-1.0.0-macos-arm64.dmg.sha256
+```
+
+### Install steps
+
+1. Open the DMG and drag **TunnelChain** to **Applications**.
+2. **First launch (unsigned build):** macOS may block the app. Either:
+   - Right-click **TunnelChain** → **Open**, or
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/TunnelChain.app
+   open /Applications/TunnelChain.app
+   ```
+3. Complete the onboarding tour (optional).
+4. **Nodes** → import VLESS / WireGuard endpoints.  
+   **Chains** → compose hops. **Profiles** → routing + DNS. **Status** → **Connect**.
+5. On **Connect**, enter your **administrator password** when prompted (network/DNS changes and sing-box launch).
+6. To exit fully and restore DNS/proxy: **TunnelChain → Quit** (⌘Q).  
+   Closing the window only hides the app to the menu bar.
+
+### What is bundled
+
+- **sing-box** (`TunnelChain.app/Contents/Resources/sing-box`, v1.13.15) — copied to  
+  `~/Library/Application Support/TunnelChain/` on connect. No separate install needed.
+
+### Signed builds (optional)
+
+With an Apple **Developer ID** signed and notarized build, Connect can use the privileged helper without a password each time. Approve once in **System Settings → General → Login Items → Allow in Background → TunnelChain**.  
+Build instructions: [docs/RELEASE.md](docs/RELEASE.md).
+
+### Uninstall / reset
+
+```bash
+# quit the app first (⌘Q), then:
+sudo launchctl bootout system/com.tunnelchain.app.singbox 2>/dev/null
+sudo launchctl bootout system/com.tunnelchain.app.helper 2>/dev/null
+sudo rm -f /Library/LaunchDaemons/com.tunnelchain.app.*.plist
+rm -rf /Applications/TunnelChain.app
+rm -rf ~/Library/Application\ Support/TunnelChain
+security delete-generic-password -s "com.tunnelchain.app.secrets" 2>/dev/null
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ---
 
 ## Getting started
 
-### Clone and run
+### Clone and run (developers)
 
 ```bash
 git clone <repository-url>
@@ -268,6 +327,8 @@ test/                 # Unit and integration tests
 | [docs/AR.md](docs/AR.md) | Architecture, component diagram, data model |
 | [docs/ADR.md](docs/ADR.md) | Design decisions and trade-offs |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Planned features by phase |
+| [docs/RELEASE.md](docs/RELEASE.md) | Build, sign, DMG, and release checklist |
+| [CHANGELOG.md](CHANGELOG.md) | Release notes |
 
 **Suggested reading order:** README → FR → AR → ADR.
 
