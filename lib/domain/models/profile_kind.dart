@@ -1,0 +1,1 @@
+enum ProfileKind { vless, wireGuard }

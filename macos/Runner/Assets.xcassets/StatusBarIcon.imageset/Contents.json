@@ -1,0 +1,20 @@
+{
+  "images" : [
+    {
+      "idiom" : "mac",
+      "scale" : "1x",
+      "size" : "18x18",
+      "filename" : "status_bar_18.png"
+    },
+    {
+      "idiom" : "mac",
+      "scale" : "2x",
+      "size" : "18x18",
+      "filename" : "status_bar_36.png"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

@@ -1,0 +1,27 @@
+name: tunnel_chain
+description: macOS VPN tunnel chain manager
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.6.1
+  go_router: ^14.8.1
+  http: ^1.2.2
+  path: ^1.9.1
+  window_manager: ^0.5.1
+  web_socket_channel: ^3.0.1
+  file_picker: ^8.1.7
+  lucide_icons_flutter: ^3.1.15
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

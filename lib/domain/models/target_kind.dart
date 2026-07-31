@@ -1,0 +1,1 @@
+enum TargetKind { chain, direct }
