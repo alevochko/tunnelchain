@@ -5,8 +5,14 @@ enum LaunchdManager {
     "/Library/LaunchDaemons/\(HelperConstants.singBoxLabel).plist"
   }
 
-  static func singBoxBinary() -> String? {
-    for path in HelperConstants.singBoxPaths where FileManager.default.isExecutableFile(atPath: path) {
+  static func singBoxBinary(preferredPath: String? = nil) -> String? {
+    if let preferred = preferredPath,
+       !preferred.isEmpty,
+       FileManager.default.isExecutableFile(atPath: preferred) {
+      return preferred
+    }
+    for path in HelperConstants.singBoxPaths
+      where FileManager.default.isExecutableFile(atPath: path) {
       return path
     }
     return nil
@@ -27,8 +33,12 @@ enum LaunchdManager {
     }
   }
 
-  static func startSingBox(configPath: String) throws {
-    guard let binary = singBoxBinary() else {
+  static func startSingBox(
+    configPath: String,
+    keepAlive: Bool = true,
+    binaryPath: String? = nil
+  ) throws {
+    guard let binary = singBoxBinary(preferredPath: binaryPath) else {
       throw NSError(domain: "TunnelChain", code: 1, userInfo: [
         NSLocalizedDescriptionKey: "sing-box binary not found",
       ])
@@ -51,7 +61,7 @@ enum LaunchdManager {
         <string>\(configDir)</string>
       </array>
       <key>RunAtLoad</key><true/>
-      <key>KeepAlive</key><true/>
+      <key>KeepAlive</key><\(keepAlive ? "true" : "false")/>
       <key>ProcessType</key><string>Interactive</string>
       <key>StandardOutPath</key><string>\(HelperConstants.logOut)</string>
       <key>StandardErrorPath</key><string>\(HelperConstants.logErr)</string>

@@ -2,8 +2,14 @@ import Foundation
 
 final class HelperService: NSObject, HelperProtocol, NSXPCListenerDelegate {
   private var sessionToken: String?
+  private var killSwitchEnabled = false
+  private var killSwitchEngaged = false
+  private var intentionalShutdown = false
   private let watchdog = Watchdog {
     _ = ResetService.resetAll()
+  }
+  private lazy var processMonitor = ProcessMonitor { [weak self] in
+    self?.handleSingBoxDied()
   }
 
   func listener(
@@ -17,8 +23,12 @@ final class HelperService: NSObject, HelperProtocol, NSXPCListenerDelegate {
   }
 
   func resetAll(withReply reply: @escaping ([String: Any]) -> Void) {
+    intentionalShutdown = true
+    processMonitor.stop()
     watchdog.disarm()
     sessionToken = nil
+    killSwitchEngaged = false
+    killSwitchEnabled = false
     reply(ResetService.resetAll())
   }
 
@@ -27,11 +37,21 @@ final class HelperService: NSObject, HelperProtocol, NSXPCListenerDelegate {
     safetyTimeout: Int,
     dnsServers: [String],
     searchDomains: [String],
+    killSwitch: Bool,
+    singBoxPath: String,
     withReply reply: @escaping ([String: Any]) -> Void
   ) {
     do {
       try validateConfigPath(path)
-      try LaunchdManager.startSingBox(configPath: path)
+      intentionalShutdown = false
+      killSwitchEngaged = false
+      killSwitchEnabled = killSwitch
+      let binary = singBoxPath.isEmpty ? nil : singBoxPath
+      try LaunchdManager.startSingBox(
+        configPath: path,
+        keepAlive: !killSwitch,
+        binaryPath: binary
+      )
 
       let servers = dnsServers.isEmpty ? [HelperConstants.dnsPinIp] : dnsServers
       _ = NetworkOps.setDns(servers: servers, searchDomains: searchDomains)
@@ -39,6 +59,7 @@ final class HelperService: NSObject, HelperProtocol, NSXPCListenerDelegate {
       let token = UUID().uuidString
       sessionToken = token
       watchdog.arm(seconds: safetyTimeout)
+      processMonitor.start()
 
       reply([
         "success": true,
@@ -46,6 +67,8 @@ final class HelperService: NSObject, HelperProtocol, NSXPCListenerDelegate {
         "steps": ["startSingBox": true, "setDns": true],
       ])
     } catch {
+      intentionalShutdown = true
+      processMonitor.stop()
       _ = ResetService.resetAll()
       reply([
         "success": false,
@@ -63,13 +86,35 @@ final class HelperService: NSObject, HelperProtocol, NSXPCListenerDelegate {
   }
 
   func stop(withReply reply: @escaping (Bool) -> Void) {
+    intentionalShutdown = true
+    processMonitor.stop()
     watchdog.disarm()
     sessionToken = nil
+    killSwitchEngaged = false
+    killSwitchEnabled = false
     reply(LaunchdManager.stopSingBox())
   }
 
   func ping(withReply reply: @escaping (Bool) -> Void) {
     reply(true)
+  }
+
+  func getSessionStatus(withReply reply: @escaping ([String: Any]) -> Void) {
+    reply([
+      "sessionActive": sessionToken != nil,
+      "singboxRunning": ProcessMonitor.singBoxRunning(),
+      "killSwitchEngaged": killSwitchEngaged,
+      "killSwitchEnabled": killSwitchEnabled,
+    ])
+  }
+
+  private func handleSingBoxDied() {
+    guard sessionToken != nil, !intentionalShutdown else { return }
+    if killSwitchEnabled && !killSwitchEngaged {
+      killSwitchEngaged = true
+      watchdog.disarm()
+      _ = ResetService.engageKillSwitch()
+    }
   }
 
   private func validateConfigPath(_ path: String) throws {

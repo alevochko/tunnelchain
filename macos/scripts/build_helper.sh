@@ -15,6 +15,7 @@ swiftc -O \
   "${HELPER_SRC}/LaunchdManager.swift" \
   "${HELPER_SRC}/Watchdog.swift" \
   "${HELPER_SRC}/ResetService.swift" \
+  "${HELPER_SRC}/ProcessMonitor.swift" \
   "${HELPER_SRC}/HelperProtocol.swift" \
   "${HELPER_SRC}/HelperService.swift" \
   "${HELPER_SRC}/main.swift" \
@@ -32,3 +33,12 @@ codesign --force --sign "$SIGN_ID" --options runtime \
 
 echo "Built and signed helper at ${HELPER_BIN}"
 echo "Installed launchd plist at ${PLIST_DST}"
+
+SINGBOX_SRC="${SRCROOT}/Runner/Resources/sing-box"
+SINGBOX_DST="${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/sing-box"
+if [ -f "$SINGBOX_SRC" ]; then
+  mkdir -p "$(dirname "$SINGBOX_DST")"
+  cp "$SINGBOX_SRC" "$SINGBOX_DST"
+  chmod 755 "$SINGBOX_DST"
+  echo "Bundled sing-box at ${SINGBOX_DST}"
+fi

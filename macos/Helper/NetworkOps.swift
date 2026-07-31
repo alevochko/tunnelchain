@@ -68,9 +68,40 @@ enum NetworkOps {
     guard anchors.lowercased().contains("tunnelchain")
       || anchors.lowercased().contains("sing-box")
     else { return true }
+    _ = shellOutput("/sbin/pfctl", ["-a", HelperConstants.pfAnchor, "-F", "all"])
     _ = shellOutput("/sbin/pfctl", ["-F", "all"])
     _ = shellOutput("/sbin/pfctl", ["-f", "/etc/pf.conf"])
     return true
+  }
+
+  static func removeStaleRoutes() -> Bool {
+    let output = shellOutput("/usr/sbin/netstat", ["-rn", "-f", "inet"]) ?? ""
+    var ok = true
+    for line in output.split(separator: "\n") {
+      let trimmed = String(line).trimmingCharacters(in: .whitespaces)
+      guard trimmed.contains("172.19.0") else { continue }
+      let parts = trimmed.split(whereSeparator: { $0.isWhitespace })
+      guard let dest = parts.first else { continue }
+      let destStr = String(dest)
+      if !runRoute(["delete", "-inet", destStr]) { ok = false }
+    }
+    return ok
+  }
+
+  @discardableResult
+  private static func runRoute(_ args: [String]) -> Bool {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/sbin/route")
+    process.arguments = args
+    process.standardOutput = Pipe()
+    process.standardError = Pipe()
+    do {
+      try process.run()
+      process.waitUntilExit()
+      return process.terminationStatus == 0
+    } catch {
+      return false
+    }
   }
 
   private static func flushDnsCache() {

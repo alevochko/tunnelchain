@@ -7,11 +7,19 @@ class FakePrivilegedClient implements PrivilegedClient {
     xpcReachable: false,
   );
   final List<String> calls = [];
+  HelperSessionStatus sessionStatus = const HelperSessionStatus(
+    sessionActive: false,
+    singboxRunning: false,
+    killSwitchEngaged: false,
+    killSwitchEnabled: false,
+  );
 
   @override
   Future<PrivilegedResult> applyConfig({
     required String configPath,
     required int safetyTimeoutSec,
+    required bool killSwitch,
+    String? singBoxPath,
     List<String> dnsServers = const [],
     List<String> searchDomains = const [],
   }) async {
@@ -42,6 +50,12 @@ class FakePrivilegedClient implements PrivilegedClient {
   @override
   Future<PrivilegedResult> resetAll() async {
     calls.add('resetAll');
+    sessionStatus = const HelperSessionStatus(
+      sessionActive: false,
+      singboxRunning: false,
+      killSwitchEngaged: false,
+      killSwitchEnabled: false,
+    );
     return const PrivilegedResult(
       success: true,
       steps: {'clearDns': true, 'stopSingBox': true},
@@ -52,6 +66,9 @@ class FakePrivilegedClient implements PrivilegedClient {
   Future<void> stop() async {
     calls.add('stop');
   }
+
+  @override
+  Future<HelperSessionStatus> getSessionStatus() async => sessionStatus;
 }
 
 void main() {

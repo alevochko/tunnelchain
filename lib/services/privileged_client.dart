@@ -29,6 +29,30 @@ class PrivilegedResult {
   final String? error;
 }
 
+/// Live helper session snapshot (FR-13 / FR-24).
+class HelperSessionStatus {
+  const HelperSessionStatus({
+    required this.sessionActive,
+    required this.singboxRunning,
+    required this.killSwitchEngaged,
+    required this.killSwitchEnabled,
+  });
+
+  factory HelperSessionStatus.fromMap(Map<dynamic, dynamic> map) {
+    return HelperSessionStatus(
+      sessionActive: map['sessionActive'] == true,
+      singboxRunning: map['singboxRunning'] == true,
+      killSwitchEngaged: map['killSwitchEngaged'] == true,
+      killSwitchEnabled: map['killSwitchEnabled'] == true,
+    );
+  }
+
+  final bool sessionActive;
+  final bool singboxRunning;
+  final bool killSwitchEngaged;
+  final bool killSwitchEnabled;
+}
+
 /// SMAppService registration state + live XPC reachability.
 class HelperInfo {
   const HelperInfo({
@@ -68,6 +92,8 @@ abstract class PrivilegedClient {
   Future<PrivilegedResult> applyConfig({
     required String configPath,
     required int safetyTimeoutSec,
+    required bool killSwitch,
+    String? singBoxPath,
     List<String> dnsServers,
     List<String> searchDomains,
   });
@@ -75,4 +101,6 @@ abstract class PrivilegedClient {
   Future<void> confirm(String sessionToken);
 
   Future<void> stop();
+
+  Future<HelperSessionStatus> getSessionStatus();
 }

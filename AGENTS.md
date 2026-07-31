@@ -2,7 +2,7 @@
 
 Guide for AI agents and developers: how the project is structured, where to put code, and what to verify before finishing a task.
 
-**Status:** macOS Flutter app `0.1.0`, early development. Single platform — macOS.
+**Status:** macOS Flutter app `1.0.0`. Single platform — macOS.
 
 ---
 

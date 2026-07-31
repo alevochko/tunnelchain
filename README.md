@@ -4,7 +4,7 @@
 
 TunnelChain is a native macOS application that manages nested VPN and proxy tunnels from a single place. You define **nodes** (endpoints), compose them into **chains** (ordered hops), and attach **profiles** (routing + DNS rules). The app generates a [sing-box](https://github.com/SagerNet/sing-box) configuration, brings up one TUN interface, and monitors the connection.
 
-> **Status:** early development (`0.1.0`). macOS only. APIs and file formats may change.
+> **Status:** 1.0.0 — macOS only.
 
 ---
 
@@ -315,6 +315,6 @@ Details and evidence: [docs/ADR.md](docs/ADR.md).
 
 ## License
 
-Application license: **not yet specified** — check with the maintainers before redistribution.
+TunnelChain application code is licensed under the [MIT License](LICENSE).
 
-[sing-box](https://github.com/SagerNet/sing-box) is licensed under **GPL-3.0** and runs as a separate process. TunnelChain does not link against it.
+[sing-box](https://github.com/SagerNet/sing-box) is licensed under **GPL-3.0** and runs as a separate process. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for source retrieval instructions.

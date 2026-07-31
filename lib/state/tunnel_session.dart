@@ -80,7 +80,7 @@ class TunnelUiState {
 
   bool get canConnect =>
       !busy &&
-      !tunnelState.isConnected &&
+      !tunnelState.isLive &&
       tunnelState != TunnelState.resetting &&
       tunnelState != TunnelState.validating &&
       tunnelState != TunnelState.starting &&
@@ -88,7 +88,7 @@ class TunnelUiState {
 
   bool get canDisconnect =>
       !busy &&
-      (tunnelState.isConnected ||
+      (tunnelState.isLive ||
           tunnelState == TunnelState.awaitingConfirm ||
           tunnelState == TunnelState.resetting);
 
@@ -306,12 +306,14 @@ class TunnelSessionNotifier extends Notifier<TunnelUiState> {
       await _controller.connect(
         configJson: configJson,
         safetyTimeoutSec: tunnel.safetyTimeoutSec,
+        killSwitch: tunnel.killSwitch,
         dnsServers: const [ConfigConstants.dnsPinIp],
         searchDomains: tunnel.dns.searchDomains,
         clashApiSecret: tunnel.clashApiSecret,
       );
 
       state = state.copyWith(
+        safetyTimeoutSec: tunnel.safetyTimeoutSec,
         activeChainName: bundle.activeChainLabel(
           activeProfileName: ref.read(tunnelCatalogProvider).plan.activeProfile?.name,
         ),
@@ -321,11 +323,9 @@ class TunnelSessionNotifier extends Notifier<TunnelUiState> {
       );
 
       if (_controller.state == TunnelState.awaitingConfirm) {
-        await _controller.confirm();
         state = state.copyWith(
           clearError: true,
-          clearAwaiting: true,
-          connectedSince: DateTime.now(),
+          awaitingConfirmSince: DateTime.now(),
         );
       } else if (_controller.state.isConnected) {
         state = state.copyWith(
@@ -365,9 +365,7 @@ class TunnelSessionNotifier extends Notifier<TunnelUiState> {
     }
   }
 
-  bool get _isLive =>
-      state.tunnelState.isConnected ||
-      state.tunnelState == TunnelState.awaitingConfirm;
+  bool get _isLive => state.tunnelState.isLive;
 
   Future<void> reconnectIfConnected() async {
     if (!_isLive) return;
@@ -397,10 +395,9 @@ class TunnelSessionNotifier extends Notifier<TunnelUiState> {
 
   void _onTunnelState(TunnelState next) {
     final wasConnected =
-        state.tunnelState.isConnected ||
+        state.tunnelState.isLive ||
         state.tunnelState == TunnelState.awaitingConfirm;
-    final isLive =
-        next.isConnected || next == TunnelState.awaitingConfirm;
+    final isLive = next.isLive || next == TunnelState.awaitingConfirm;
 
     state = state.copyWith(
       tunnelState: next,
@@ -408,11 +405,18 @@ class TunnelSessionNotifier extends Notifier<TunnelUiState> {
           ? DateTime.now()
           : null,
       clearConnectedSince: !isLive && wasConnected,
+      clearAwaiting: next != TunnelState.awaitingConfirm,
+      awaitingConfirmSince: next == TunnelState.awaitingConfirm &&
+              state.awaitingConfirmSince == null
+          ? DateTime.now()
+          : state.awaitingConfirmSince,
     );
 
-    if (next == TunnelState.stopped) {
-      _stopTrafficPolling();
-      _liveTicker?.cancel();
+    if (next == TunnelState.stopped || next == TunnelState.killSwitchEngaged) {
+      if (next == TunnelState.stopped) {
+        _stopTrafficPolling();
+        _liveTicker?.cancel();
+      }
     }
     if (isLive) {
       _startLiveTicker();

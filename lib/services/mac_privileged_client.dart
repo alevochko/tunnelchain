@@ -46,6 +46,8 @@ class MacPrivilegedClient implements PrivilegedClient {
   Future<PrivilegedResult> applyConfig({
     required String configPath,
     required int safetyTimeoutSec,
+    required bool killSwitch,
+    String? singBoxPath,
     List<String> dnsServers = const [],
     List<String> searchDomains = const [],
   }) async {
@@ -55,6 +57,8 @@ class MacPrivilegedClient implements PrivilegedClient {
           {
             'configPath': configPath,
             'safetyTimeoutSec': safetyTimeoutSec,
+            'killSwitch': killSwitch,
+            'singBoxPath': singBoxPath ?? '',
             'dnsServers': dnsServers,
             'searchDomains': searchDomains,
           },
@@ -66,6 +70,22 @@ class MacPrivilegedClient implements PrivilegedClient {
             'success': false,
             'error':
                 'Helper did not respond. Register helper first (see card above).',
+          },
+    );
+  }
+
+  @override
+  Future<HelperSessionStatus> getSessionStatus() async {
+    final result = await _channel
+        .invokeMapMethod<String, dynamic>('getSessionStatus')
+        .timeout(const Duration(seconds: 5), onTimeout: () => null);
+    return HelperSessionStatus.fromMap(
+      result ??
+          {
+            'sessionActive': false,
+            'singboxRunning': false,
+            'killSwitchEngaged': false,
+            'killSwitchEnabled': false,
           },
     );
   }

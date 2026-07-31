@@ -5,6 +5,7 @@ import 'package:tunnel_chain/services/clash_api_client.dart';
 import 'package:tunnel_chain/services/config_store.dart';
 import 'package:tunnel_chain/services/mac_privileged_client.dart';
 import 'package:tunnel_chain/services/privileged_client.dart';
+import 'package:tunnel_chain/services/sing_box_path.dart';
 import 'package:tunnel_chain/services/tunnel_state.dart';
 
 /// sing-box lifecycle + helper coordination (AR §8).
@@ -29,6 +30,7 @@ class CoreController {
 
   String? _sessionToken;
   String? _clashSecret;
+  Timer? _sessionPoller;
 
   Future<String> configDirectory() => _configStore.configDirectory();
 
@@ -53,19 +55,21 @@ class CoreController {
 
   Future<void> openHelperSettings() => _privileged.openHelperSettings();
 
+  Future<HelperSessionStatus> sessionStatus() => _privileged.getSessionStatus();
+
   Future<void> connect({
     required String configJson,
     int safetyTimeoutSec = 300,
+    bool killSwitch = true,
     List<String> dnsServers = const [ConfigConstants.dnsPinIp],
     List<String> searchDomains = const [],
     String? clashApiSecret,
   }) async {
-    if (_state.isConnected || _state == TunnelState.starting) return;
+    if (_state.isLive || _state == TunnelState.starting) return;
 
     _setState(TunnelState.validating);
     _clashSecret = clashApiSecret;
 
-    // sing-box check runs in the privileged helper (sandbox cannot execute it).
     final configPath = await _configStore.writeConfig(configJson);
 
     _setState(TunnelState.starting);
@@ -73,6 +77,8 @@ class CoreController {
     final result = await _privileged.applyConfig(
       configPath: configPath,
       safetyTimeoutSec: safetyTimeoutSec,
+      killSwitch: killSwitch,
+      singBoxPath: resolveBundledSingBoxPath(),
       dnsServers: dnsServers,
       searchDomains: searchDomains,
     );
@@ -95,12 +101,36 @@ class CoreController {
               ? TunnelState.awaitingConfirm
               : TunnelState.running,
         );
+        _startSessionPoller();
         return;
       }
       await Future<void>.delayed(const Duration(milliseconds: 250));
     }
 
     _setState(TunnelState.degraded);
+    _startSessionPoller();
+  }
+
+  void _startSessionPoller() {
+    _sessionPoller?.cancel();
+    _sessionPoller = Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (!_state.isLive && _state != TunnelState.awaitingConfirm) {
+        return;
+      }
+      try {
+        final status = await _privileged.getSessionStatus();
+        if (status.killSwitchEngaged) {
+          _setState(TunnelState.killSwitchEngaged);
+          return;
+        }
+        if (!status.sessionActive &&
+            (_state.isLive || _state == TunnelState.awaitingConfirm)) {
+          _sessionToken = null;
+          _setState(TunnelState.stopped);
+          _sessionPoller?.cancel();
+        }
+      } catch (_) {}
+    });
   }
 
   Future<void> confirm() async {
@@ -113,16 +143,16 @@ class CoreController {
   }
 
   Future<PrivilegedResult> disconnect() async {
+    _sessionPoller?.cancel();
     _setState(TunnelState.resetting);
-    // resetAll already stops sing-box — one admin prompt in dev mode.
     final result = await _privileged.resetAll();
     _sessionToken = null;
     _setState(TunnelState.stopped);
     return result;
   }
 
-  /// Idempotent full reset (FR-25 / Doctor fix) — safe when core is already stopped.
   Future<PrivilegedResult> resetNetwork() async {
+    _sessionPoller?.cancel();
     _setState(TunnelState.resetting);
     try {
       final result = await _privileged.resetAll();
@@ -141,6 +171,7 @@ class CoreController {
   }
 
   Future<void> dispose() async {
+    _sessionPoller?.cancel();
     await _stateController.close();
     _clashApi.close();
   }

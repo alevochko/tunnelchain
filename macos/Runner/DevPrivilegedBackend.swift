@@ -115,6 +115,8 @@ enum DevPrivilegedBackend {
     safetyTimeout: Int,
     dnsServers: [String],
     searchDomains: [String],
+    killSwitch: Bool,
+    singBoxPath: String,
     completion: @escaping ([String: Any]) -> Void
   ) {
     let configDir = (path as NSString).deletingLastPathComponent
@@ -124,13 +126,14 @@ enum DevPrivilegedBackend {
     let dnsArgs = dns.map(shellQuote).joined(separator: " ")
     let searchArgs = searchDomains.map(shellQuote).joined(separator: " ")
 
-    let singbox = "/usr/local/bin/sing-box"
+    let singbox = singBoxPath.isEmpty ? "/usr/local/bin/sing-box" : singBoxPath
+    let keepAlive = killSwitch ? "false" : "true"
     let plist = singBoxPlist(
       label: label,
       configPath: path,
       configDir: configDir,
       singbox: singbox
-    )
+    ).replacingOccurrences(of: "<key>KeepAlive</key><true/>", with: "<key>KeepAlive</key><\(keepAlive)/>")
 
     let tempPlist: URL
     do {
@@ -144,7 +147,8 @@ enum DevPrivilegedBackend {
     set -euo pipefail
     SB='/usr/local/bin/sing-box'
     [ -x "$SB" ] || SB='/opt/homebrew/bin/sing-box'
-    [ -x "$SB" ] || { echo 'sing-box not found in /usr/local or /opt/homebrew'; exit 1; }
+    [ -x "\(shellQuote(singbox))" ] && SB=\(shellQuote(singbox))
+    [ -x "$SB" ] || { echo 'sing-box not found'; exit 1; }
     "$SB" check -c \(shellQuote(path))
     cp \(shellQuote(tempPlist.path)) \(shellQuote(plistPath))
     chmod 644 \(shellQuote(plistPath))
@@ -223,5 +227,20 @@ enum DevPrivilegedBackend {
 
   static func confirm(completion: @escaping (Bool) -> Void) {
     completion(true)
+  }
+
+  static func getSessionStatus(completion: @escaping ([String: Any]) -> Void) {
+    let label = "com.tunnelchain.app.singbox"
+    runBashScript("""
+    if pgrep -x sing-box >/dev/null 2>&1; then echo running; else echo stopped; fi
+  """) { ok, message in
+      let running = message.contains("running")
+      completion([
+        "sessionActive": running,
+        "singboxRunning": running,
+        "killSwitchEngaged": false,
+        "killSwitchEnabled": false,
+      ])
+    }
   }
 }

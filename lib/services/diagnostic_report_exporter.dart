@@ -21,7 +21,7 @@ class DiagnosticExportContext {
     required this.session,
     this.diagnostics,
     this.liveLogLines = const [],
-    this.appVersion = '0.1.0+1',
+    this.appVersion = '1.0.0+1',
   });
 
   final TunnelUiState session;
@@ -132,7 +132,7 @@ class DiagnosticReportExporter {
     buffer.writeln('Doctor checks (on-demand):');
     buffer.writeln('  mtu: ${_diagnostics.mtuInfo().detail}');
     buffer.writeln(
-      '  leakcheck: ${_diagnostics.leakcheckStatus(tunnelConnected: connected).detail}',
+      '  leakcheck: ${connected ? "run Diagnostics screen while connected" : "connect first"}',
     );
   }
 

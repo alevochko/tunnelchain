@@ -9,6 +9,7 @@ enum TunnelState {
   awaitingConfirm,
   confirmed,
   resetting,
+  killSwitchEngaged,
 }
 
 extension TunnelStateLabel on TunnelState {
@@ -22,6 +23,7 @@ extension TunnelStateLabel on TunnelState {
     TunnelState.awaitingConfirm => 'Awaiting confirmation',
     TunnelState.confirmed => 'Confirmed',
     TunnelState.resetting => 'Resetting',
+    TunnelState.killSwitchEngaged => 'Kill switch engaged',
   };
 
   bool get isConnected =>
@@ -29,4 +31,7 @@ extension TunnelStateLabel on TunnelState {
       this == TunnelState.degraded ||
       this == TunnelState.awaitingConfirm ||
       this == TunnelState.confirmed;
+
+  bool get isLive =>
+      isConnected || this == TunnelState.killSwitchEngaged;
 }

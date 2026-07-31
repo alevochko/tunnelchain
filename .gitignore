@@ -36,6 +36,7 @@ migrate_working_dir/
 /build/
 /coverage/
 tunnelchain-profile-*.json
+macos/Runner/Resources/sing-box
 
 # Symbolication related
 app.*.symbols

@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:tunnel_chain/core_config/config_constants.dart';
-import 'package:tunnel_chain/demo/sample_tunnel.dart';
 import 'package:tunnel_chain/domain/models/diagnostic_models.dart';
 
 typedef ProcessRunner = Future<ProcessResult> Function(
@@ -22,43 +21,13 @@ class DiagnosticsService {
     return Process.run(executable, arguments);
   }
 
-  DiagnosticCheck mtuInfo() {
-    final tunnel = SampleTunnel.tunnelConfig;
+  DiagnosticCheck mtuInfo({int tunMtu = 1280, int wgMtu = 1280}) {
     return DiagnosticCheck(
       id: 'mtu',
-      title: 'MTU ${tunnel.tunMtu} (TUN) / ${tunnel.wgMtu} (WireGuard)',
+      title: 'MTU $tunMtu (TUN) / $wgMtu (WireGuard)',
       detail:
-          'Prototype default is 1280 — larger values often break large TLS transfers.',
+          'Default is 1280 — larger values often break large TLS transfers.',
       status: DiagnosticStatus.ok,
-    );
-  }
-
-  DiagnosticCheck leakcheckStatus({required bool tunnelConnected}) {
-    if (!tunnelConnected) {
-      return const DiagnosticCheck(
-        id: 'leakcheck',
-        title: 'Nesting verification',
-        detail: 'Connect a chain first, then run leakcheck (tcpdump on physical iface).',
-        status: DiagnosticStatus.idle,
-        actionLabel: 'Run after connect',
-      );
-    }
-    return const DiagnosticCheck(
-      id: 'leakcheck',
-      title: 'Nesting verification',
-      detail:
-          'Capture on physical interface: UDP to inner endpoint must be silent; traffic to outer hop must be visible.',
-      status: DiagnosticStatus.idle,
-      actionLabel: 'Run leakcheck',
-    );
-  }
-
-  DiagnosticCheck throughputPlaceholder() {
-    return const DiagnosticCheck(
-      id: 'throughput',
-      title: 'Throughput measurement',
-      detail: 'Not implemented yet — will report avg / best / failed runs (FR-20).',
-      status: DiagnosticStatus.idle,
     );
   }
 
@@ -125,11 +94,15 @@ class DiagnosticsService {
 
     final proxy = await _detectSystemProxy();
     if (proxy != null) {
+      final isForeignVpn =
+          proxy.contains('127.0.0.1') || proxy.contains('localhost');
       findings.add(
         DoctorFinding(
           id: 'system-proxy',
           title: 'System HTTP proxy is enabled',
-          detail: proxy,
+          detail: isForeignVpn
+              ? '$proxy — often left by another VPN client (e.g. Hiddify).'
+              : proxy,
           severity: DoctorSeverity.error,
           fixLabel: 'Reset network settings',
         ),
@@ -190,6 +163,30 @@ class DiagnosticsService {
       );
     }
 
+    final pf = await _run('/sbin/pfctl', ['-s', 'Anchors']);
+    final pfText = (pf.stdout as String).toLowerCase();
+    if (pfText.contains('tunnelchain') || pfText.contains('sing-box')) {
+      findings.add(
+        const DoctorFinding(
+          id: 'pf-rules',
+          title: 'Packet filter anchors from tunnel core',
+          detail:
+              'pf anchors reference tunnelchain or sing-box — may block traffic after crash.',
+          severity: DoctorSeverity.warning,
+          fixLabel: 'Reset network settings',
+        ),
+      );
+    } else {
+      findings.add(
+        const DoctorFinding(
+          id: 'pf-rules',
+          title: 'No tunnel pf anchors',
+          detail: 'pfctl shows no tunnelchain/sing-box anchors.',
+          severity: DoctorSeverity.info,
+        ),
+      );
+    }
+
     final ping = await _run('ping', ['-c', '1', '-t', '3', '1.1.1.1']);
     findings.add(
       DoctorFinding(
@@ -216,11 +213,13 @@ class DiagnosticsService {
         .where((s) => s.isNotEmpty && !s.startsWith('*'));
 
     for (final service in services) {
-      final web = await _run('networksetup', ['-getwebproxy', service]);
-      if (web.exitCode != 0) continue;
-      final text = (web.stdout as String).replaceAll('\n', ' ');
-      if (text.contains('Enabled: Yes')) {
-        return '$service: $text';
+      for (final flag in ['-getwebproxy', '-getsecurewebproxy', '-getsocksfirewallproxy']) {
+        final web = await _run('networksetup', [flag, service]);
+        if (web.exitCode != 0) continue;
+        final text = (web.stdout as String).replaceAll('\n', ' ');
+        if (text.contains('Enabled: Yes')) {
+          return '$service ($flag): $text';
+        }
       }
     }
     return null;

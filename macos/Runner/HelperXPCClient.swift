@@ -63,6 +63,8 @@ final class HelperXPCClient {
     safetyTimeout: Int,
     dnsServers: [String],
     searchDomains: [String],
+    killSwitch: Bool,
+    singBoxPath: String,
     completion: @escaping ([String: Any]) -> Void
   ) {
     replyMap(timeout: 30, fallback: [
@@ -74,8 +76,21 @@ final class HelperXPCClient {
         safetyTimeout: safetyTimeout,
         dnsServers: dnsServers,
         searchDomains: searchDomains,
+        killSwitch: killSwitch,
+        singBoxPath: singBoxPath,
         withReply: reply
       )
+    }
+  }
+
+  func getSessionStatus(completion: @escaping ([String: Any]) -> Void) {
+    replyMap(timeout: 5, fallback: [
+      "sessionActive": false,
+      "singboxRunning": false,
+      "killSwitchEngaged": false,
+      "killSwitchEnabled": false,
+    ], completion: completion) { remote, reply in
+      remote.getSessionStatus(withReply: reply)
     }
   }
 

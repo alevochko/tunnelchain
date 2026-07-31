@@ -8,6 +8,7 @@ enum HelperConstants {
   static let pfAnchor = "com.tunnelchain.app"
   static let configSubpath = "Library/Application Support/TunnelChain"
   static let singBoxPaths = [
+    "/Applications/TunnelChain.app/Contents/Resources/sing-box",
     "/usr/local/bin/sing-box",
     "/opt/homebrew/bin/sing-box",
   ]

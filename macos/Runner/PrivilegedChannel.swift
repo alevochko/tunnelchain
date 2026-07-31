@@ -74,13 +74,17 @@ final class PrivilegedChannel: NSObject {
       let timeout = args["safetyTimeoutSec"] as? Int ?? 300
       let dns = args["dnsServers"] as? [String] ?? []
       let search = args["searchDomains"] as? [String] ?? []
+      let killSwitch = args["killSwitch"] as? Bool ?? true
+      let singBoxPath = args["singBoxPath"] as? String ?? ""
 
       if useDevBackend() {
         DevPrivilegedBackend.applyConfig(
           path: configPath,
           safetyTimeout: timeout,
           dnsServers: dns,
-          searchDomains: search
+          searchDomains: search,
+          killSwitch: killSwitch,
+          singBoxPath: singBoxPath
         ) { payload in
           result(payload)
         }
@@ -91,8 +95,21 @@ final class PrivilegedChannel: NSObject {
         path: configPath,
         safetyTimeout: timeout,
         dnsServers: dns,
-        searchDomains: search
+        searchDomains: search,
+        killSwitch: killSwitch,
+        singBoxPath: singBoxPath
       ) { payload in
+        result(payload)
+      }
+
+    case "getSessionStatus":
+      if useDevBackend() {
+        DevPrivilegedBackend.getSessionStatus { payload in
+          result(payload)
+        }
+        return
+      }
+      HelperXPCClient.shared.getSessionStatus { payload in
         result(payload)
       }
 

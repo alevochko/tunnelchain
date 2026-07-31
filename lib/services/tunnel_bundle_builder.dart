@@ -61,6 +61,20 @@ class ConnectBundle {
     labels.add('Egress');
     return labels;
   }
+
+  WireGuardProfile? innerWireGuardProfile() {
+    for (final profile in profiles.values) {
+      if (profile is WireGuardProfile) return profile;
+    }
+    return null;
+  }
+
+  VlessProfile? outerVlessProfile() {
+    for (final profile in profiles.values) {
+      if (profile is VlessProfile) return profile;
+    }
+    return null;
+  }
 }
 
 class TunnelBundleBuilder {

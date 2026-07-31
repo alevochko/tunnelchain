@@ -73,6 +73,19 @@ class StatusScreen extends ConsumerWidget {
             const SizedBox(height: AppSpacing.xl),
             _ConfirmBanner(session: session, notifier: notifier),
           ],
+          if (session.tunnelState == TunnelState.killSwitchEngaged) ...[
+            const SizedBox(height: AppSpacing.xl),
+            VerdictCard(
+              title: 'Kill switch engaged',
+              body:
+                  'sing-box stopped unexpectedly. DNS pin is still active — '
+                  'traffic is blocked until you reset network settings.',
+              tone: VerdictTone.error,
+              leading: const ErrorIcon(),
+              actionLabel: session.busy ? null : 'Reset network settings',
+              onAction: session.busy ? null : notifier.disconnect,
+            ),
+          ],
           if (errorText != null) ...[
             const SizedBox(height: AppSpacing.xl),
             VerdictCard(

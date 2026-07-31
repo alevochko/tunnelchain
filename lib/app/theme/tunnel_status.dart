@@ -22,6 +22,7 @@ TunnelVisualStatus mapTunnelState(TunnelState state) {
     TunnelState.failed => TunnelVisualStatus.failed,
     TunnelState.awaitingConfirm => TunnelVisualStatus.awaitingConfirm,
     TunnelState.resetting => TunnelVisualStatus.resetting,
+    TunnelState.killSwitchEngaged => TunnelVisualStatus.failed,
   };
 }
 
