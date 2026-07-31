@@ -6,6 +6,9 @@ enum LaunchdManager {
   }
 
   static func singBoxBinary(preferredPath: String? = nil) -> String? {
+    if let bundled = HelperConstants.bundledSingBoxPath() {
+      return bundled
+    }
     if let preferred = preferredPath,
        !preferred.isEmpty,
        FileManager.default.isExecutableFile(atPath: preferred) {

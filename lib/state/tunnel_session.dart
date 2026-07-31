@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tunnel_chain/core_config/config_constants.dart';
 import 'package:tunnel_chain/services/clash_api_client.dart';
+import 'package:tunnel_chain/services/connect_safety_policy.dart';
 import 'package:tunnel_chain/services/core_controller.dart';
 import 'package:tunnel_chain/services/tunnel_state.dart';
 import 'package:tunnel_chain/app/theme/tunnel_status.dart';
@@ -187,11 +189,16 @@ class TunnelSessionNotifier extends Notifier<TunnelUiState> {
           nextKey != null &&
           prevKey != nextKey;
 
+      final profileSwitched =
+          active != null &&
+          prevActive != null &&
+          prevActive.id != active.id;
+
       _activeProfileConfigKey = nextKey;
 
       _syncDisplayFromBundle();
 
-      if (activeProfileEdited && _isLive) {
+      if ((profileSwitched || activeProfileEdited) && _isLive) {
         unawaited(reconnectIfConnected());
       }
     });
@@ -245,16 +252,43 @@ class TunnelSessionNotifier extends Notifier<TunnelUiState> {
     try {
       final status = await _controller.registerHelper();
       await _refreshHelperStatus();
+
+      if (state.helperStatus == 'requiresApproval') {
+        await _controller.openHelperSettings();
+        state = state.copyWith(
+          errorMessage:
+              'TunnelChain registered. In System Settings → General → '
+              'Login Items → Allow in Background — enable TunnelChain, then Refresh.',
+        );
+        return;
+      }
+
+      if (state.helperStatus == 'enabled' && state.helperAvailable) {
+        state = state.copyWith(clearError: true);
+        return;
+      }
+
+      if (state.helperStatus == 'notFound') {
+        state = state.copyWith(
+          errorMessage:
+              'SMAppService does not recognize this build (adhoc signing). '
+              'Login Items will stay empty. Use Connect — macOS will ask for '
+              'your administrator password. For password-free connect, sign the '
+              'app with an Apple Development or Developer ID certificate.',
+        );
+        return;
+      }
+
       if (!state.helperAvailable) {
         state = state.copyWith(
           errorMessage: switch (status) {
-            'devMode' => null,
             'bundleMissing' =>
-              'Helper files are missing. Run: flutter clean && flutter build macos --debug',
+              'Helper files are missing from this .app. Rebuild: '
+              'flutter build macos --release',
             'requiresApproval' =>
-              'Open System Settings → Login Items and allow TunnelChain, then Refresh.',
+              'Approve TunnelChain in Login Items (Allow in Background), then Refresh.',
             _ =>
-              'Helper is not ready (${state.helperStatusLabel}). See the card above.',
+              'Helper is not ready (${state.helperStatusLabel}).',
           },
         );
       }
@@ -270,14 +304,28 @@ class TunnelSessionNotifier extends Notifier<TunnelUiState> {
   }
 
   Future<void> connect() async {
-    state = state.copyWith(busy: true, clearAwaiting: true);
+    state = state.copyWith(busy: true, clearAwaiting: true, clearError: true);
     try {
       await _refreshHelperStatus();
-      if (!state.helperAvailable) {
+
+      if (state.helperStatus == 'bundleMissing') {
         state = state.copyWith(
           errorMessage:
-              'Privileged helper is not ready (${state.helperStatusLabel}). '
-              'Use the Helper card above: Register → approve in Login Items → Refresh.',
+              'Helper is missing from this app bundle. Rebuild with '
+              'flutter build macos --release and open the .app from '
+              'build/macos/Build/Products/Release/.',
+        );
+        return;
+      }
+
+      if (!state.helperAvailable) {
+        final hint = state.helperStatus == 'notFound' ||
+                state.helperStatus == 'notRegistered'
+            ? 'Connect will prompt for your administrator password.'
+            : 'Use the Helper card above: Register → approve in Login Items → Refresh.';
+        state = state.copyWith(
+          errorMessage:
+              'Privileged helper is not ready (${state.helperStatusLabel}). $hint',
         );
         return;
       }
@@ -303,9 +351,10 @@ class TunnelSessionNotifier extends Notifier<TunnelUiState> {
       }
 
       final tunnel = bundle.tunnel;
+      final safetyTimeoutSec = effectiveSafetyTimeoutSec(tunnel.safetyTimeoutSec);
       await _controller.connect(
         configJson: configJson,
-        safetyTimeoutSec: tunnel.safetyTimeoutSec,
+        safetyTimeoutSec: safetyTimeoutSec,
         killSwitch: tunnel.killSwitch,
         dnsServers: const [ConfigConstants.dnsPinIp],
         searchDomains: tunnel.dns.searchDomains,
@@ -313,7 +362,7 @@ class TunnelSessionNotifier extends Notifier<TunnelUiState> {
       );
 
       state = state.copyWith(
-        safetyTimeoutSec: tunnel.safetyTimeoutSec,
+        safetyTimeoutSec: safetyTimeoutSec,
         activeChainName: bundle.activeChainLabel(
           activeProfileName: ref.read(tunnelCatalogProvider).plan.activeProfile?.name,
         ),
@@ -342,7 +391,7 @@ class TunnelSessionNotifier extends Notifier<TunnelUiState> {
         state = state.copyWith(
           errorMessage:
               'sing-box started but Clash API is unreachable. '
-              'Check /tmp/tunnelchain-dev.log and sing-box logs.',
+              'Check ~/Library/Application Support/TunnelChain/dev.log and sing-box logs.',
         );
       }
     } catch (e) {
@@ -523,7 +572,7 @@ class TunnelSessionNotifier extends Notifier<TunnelUiState> {
     const prefix = 'Bad state: ';
     var message = text.startsWith(prefix) ? text.substring(prefix.length).trim() : text;
     if (message.isEmpty) {
-      message = 'Unknown error — see /tmp/tunnelchain-dev.log';
+      message = 'Unknown error — see ~/Library/Application Support/TunnelChain/dev.log';
     }
     return message;
   }

@@ -21,37 +21,38 @@ final class PrivilegedChannel: NSObject {
   func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {
     case "getHelperStatus":
-      if useDevBackend() && HelperRegistration.bundleFilesPresent() {
-        result("devMode")
-      } else {
-        result(HelperRegistration.statusDescription())
-      }
+      result(HelperRegistration.statusDescription())
 
     case "isHelperAvailable":
-      if useDevBackend() {
-        result(HelperRegistration.bundleFilesPresent())
+      let status = HelperRegistration.statusDescription()
+      if status == "enabled" {
+        HelperXPCClient.shared.checkAvailable { ok in
+          result(ok)
+        }
         return
       }
-      HelperXPCClient.shared.checkAvailable { ok in
-        result(ok)
-      }
+      // Dev fallback: admin-password path when helper exists but is not approved yet.
+      result(HelperRegistration.bundleFilesPresent())
 
     case "openHelperSettings":
       HelperRegistration.openLoginItemsSettings()
       result(true)
 
     case "registerHelper":
-      if useDevBackend() {
+      guard HelperRegistration.bundleFilesPresent() else {
         result([
-          "registered": HelperRegistration.bundleFilesPresent(),
-          "status": "devMode",
+          "registered": false,
+          "status": "bundleMissing",
+          "error": "TunnelChainHelper missing from app bundle — rebuild the app.",
         ])
         return
       }
       let registered = HelperRegistration.register()
+      let status = HelperRegistration.statusDescription()
       result([
         "registered": registered,
-        "status": HelperRegistration.statusDescription(),
+        "status": status,
+        "error": registered ? nil : "SMAppService.register() failed — see Console.app",
       ])
 
     case "resetAll":

@@ -67,6 +67,10 @@ class CoreController {
   }) async {
     if (_state.isLive || _state == TunnelState.starting) return;
 
+    if (_state == TunnelState.failed || _state == TunnelState.degraded) {
+      _setState(TunnelState.stopped);
+    }
+
     _setState(TunnelState.validating);
     _clashSecret = clashApiSecret;
 
@@ -78,7 +82,7 @@ class CoreController {
       configPath: configPath,
       safetyTimeoutSec: safetyTimeoutSec,
       killSwitch: killSwitch,
-      singBoxPath: resolveBundledSingBoxPath(),
+      singBoxPath: await resolveBundledSingBoxPath(),
       dnsServers: dnsServers,
       searchDomains: searchDomains,
     );
@@ -87,7 +91,7 @@ class CoreController {
       _setState(TunnelState.failed);
       final msg = (result.error?.trim().isNotEmpty ?? false)
           ? result.error!.trim()
-          : 'applyConfig failed — see /tmp/tunnelchain-dev.log';
+          : 'applyConfig failed — see ~/Library/Application Support/TunnelChain/dev.log';
       throw StateError(msg);
     }
 

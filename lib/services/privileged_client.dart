@@ -63,17 +63,20 @@ class HelperInfo {
   final String status;
   final bool xpcReachable;
 
-  bool get isReady =>
-      (status == 'enabled' && xpcReachable) ||
-      (status == 'devMode' && xpcReachable);
+  /// Can attempt connect: XPC helper ready, or dev fallback (admin password).
+  bool get isReady {
+    if (status == 'bundleMissing') return false;
+    if (status == 'enabled') return xpcReachable;
+    return xpcReachable;
+  }
 
   String get statusLabel => switch (status) {
     'enabled' => xpcReachable ? 'Ready' : 'Registered but not responding',
-    'devMode' => 'Development mode (admin password)',
-    'requiresApproval' => 'Waiting for approval',
-    'notRegistered' => 'Not registered',
-    'notFound' => 'Daemon plist not recognized',
-    'bundleMissing' => 'Helper missing from app bundle',
+    'requiresApproval' => 'Waiting for approval in Login Items',
+    'notRegistered' => 'Not registered — tap Register helper',
+    'notFound' =>
+      'Login Items unavailable (adhoc build) — Connect will ask for admin password',
+    'bundleMissing' => 'Helper missing from app bundle — rebuild',
     'unsupported' => 'Unsupported macOS version',
     _ => status,
   };

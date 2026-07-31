@@ -65,7 +65,7 @@ class StatusScreen extends ConsumerWidget {
               child: StatusProfileDropdown(),
             ),
           ),
-          if (!session.helperAvailable) ...[
+          if (session.helperStatus != 'enabled') ...[
             const SizedBox(height: AppSpacing.xl),
             _HelperSetupCard(session: session, notifier: notifier),
           ],
@@ -160,11 +160,11 @@ class StatusScreen extends ConsumerWidget {
     final message = session.errorMessage?.trim();
     if (message != null && message.isNotEmpty) return message;
     if (session.tunnelState == TunnelState.failed) {
-      return 'Connection failed. Check /tmp/tunnelchain-dev.log for details.';
+      return 'Connection failed. See ~/Library/Application Support/TunnelChain/dev.log';
     }
     if (session.tunnelState == TunnelState.degraded) {
       return 'Tunnel is up but connectivity looks degraded. '
-          'Check inner hop and /tmp/tunnelchain-dev.log.';
+          'Check inner hop and dev.log in Application Support/TunnelChain.';
     }
     return null;
   }
@@ -240,7 +240,19 @@ class _HelperSetupCard extends StatelessWidget {
             Text('Privileged helper', style: AppTypography.cardTitle),
             const SizedBox(height: 6),
             Text(
-              'Register the helper once, then approve in Login Items (or use dev mode with admin password).',
+              switch (session.helperStatus) {
+                'bundleMissing' =>
+                  'Helper binary is missing from this .app. Rebuild with '
+                  'flutter build macos --release.',
+                'requiresApproval' =>
+                  'Registered — open Login Items → Allow in Background → enable TunnelChain.',
+                'notRegistered' =>
+                  'Tap Register helper, then approve in Login Items (not Extensions).',
+                'notFound' =>
+                  'Adhoc build: Login Items will not work. Use Connect — admin password required.',
+                _ =>
+                  'Status: ${session.helperStatusLabel}',
+              },
               style: AppTypography.body14.copyWith(
                 color: Theme.of(context).textTheme.bodySmall?.color,
               ),

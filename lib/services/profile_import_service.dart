@@ -101,9 +101,7 @@ class ProfileImportService {
   }
 
   Future<void> _storeSecrets(Map<String, String> secrets) async {
-    for (final entry in secrets.entries) {
-      await _keychain.write(entry.key, entry.value);
-    }
+    await _keychain.mergeSecrets(secrets);
   }
 
   static String _newId() =>

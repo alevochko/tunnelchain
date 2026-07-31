@@ -21,12 +21,18 @@ class AppDelegate: FlutterAppDelegate {
       return .terminateNow
     }
     isQuitting = true
-    let semaphore = DispatchSemaphore(value: 0)
-    HelperXPCClient.shared.resetAll { _ in
-      semaphore.signal()
+
+    let reset: (@escaping ([String: Any]) -> Void) -> Void =
+      HelperRegistration.statusDescription() != "enabled"
+        ? DevPrivilegedBackend.resetAll
+        : HelperXPCClient.shared.resetAll
+
+    reset { _ in
+      DispatchQueue.main.async {
+        NSApp.reply(toApplicationShouldTerminate: true)
+      }
     }
-    _ = semaphore.wait(timeout: .now() + 10)
-    return .terminateNow
+    return .terminateLater
   }
 
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {

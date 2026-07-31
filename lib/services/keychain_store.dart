@@ -17,20 +17,38 @@ class KeychainStore {
 
   Future<Map<String, String>> getSecrets(Iterable<String> keys) async {
     final needed = keys.toSet();
-    final vault = await _loadVault();
-    final missing = needed.where((k) => vault[k]?.isNotEmpty != true).toList();
-    if (missing.isNotEmpty) {
-      await _migrateLegacyIntoVault(vault, missing);
-    }
+    if (needed.isEmpty) return {};
 
-    final result = <String, String>{};
-    for (final key in needed) {
-      final value = vault[key];
-      if (value != null && value.isNotEmpty) {
-        result[key] = value;
+    if (_vaultCache != null) {
+      final cached = <String, String>{};
+      for (final key in needed) {
+        final value = _vaultCache![key];
+        if (value != null && value.isNotEmpty) {
+          cached[key] = value;
+        }
+      }
+      if (cached.length == needed.length) {
+        return cached;
       }
     }
-    return result;
+
+    final raw = await _channel.invokeMapMethod<String, dynamic>(
+      'loadSecrets',
+      {'keys': needed.toList()},
+    );
+    _syncVaultCache(raw?['vaultJson'] as String?);
+
+    final secretsRaw = raw?['secrets'];
+    final secrets = <String, String>{};
+    if (secretsRaw is Map) {
+      secretsRaw.forEach((key, value) {
+        final stringValue = '$value';
+        if (stringValue.isNotEmpty) {
+          secrets['$key'] = stringValue;
+        }
+      });
+    }
+    return secrets;
   }
 
   Future<void> mergeSecrets(Map<String, String> secrets) async {
@@ -75,18 +93,7 @@ class KeychainStore {
   Future<Map<String, String>> _loadVault() async {
     if (_vaultCache != null) return Map.of(_vaultCache!);
     final raw = await _channel.invokeMethod<String>('readVault');
-    if (raw == null || raw.trim().isEmpty) {
-      _vaultCache = {};
-      return {};
-    }
-    final decoded = jsonDecode(raw);
-    if (decoded is! Map) {
-      _vaultCache = {};
-      return {};
-    }
-    _vaultCache = decoded.map(
-      (key, value) => MapEntry('$key', '$value'),
-    );
+    _syncVaultCache(raw);
     return Map.of(_vaultCache!);
   }
 
@@ -97,19 +104,18 @@ class KeychainStore {
     });
   }
 
-  Future<void> _migrateLegacyIntoVault(
-    Map<String, String> vault,
-    List<String> keys,
-  ) async {
-    var changed = false;
-    for (final key in keys) {
-      if (vault[key]?.isNotEmpty == true) continue;
-      final value = await _channel.invokeMethod<String>('read', {'key': key});
-      if (value == null || value.isEmpty) continue;
-      vault[key] = value;
-      changed = true;
-      await _channel.invokeMethod<void>('delete', {'key': key});
+  void _syncVaultCache(String? raw) {
+    if (raw == null || raw.trim().isEmpty) {
+      _vaultCache = {};
+      return;
     }
-    if (changed) await _saveVault(vault);
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) {
+      _vaultCache = {};
+      return;
+    }
+    _vaultCache = decoded.map(
+      (key, value) => MapEntry('$key', '$value'),
+    );
   }
 }

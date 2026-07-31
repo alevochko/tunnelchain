@@ -15,7 +15,7 @@ To obtain sing-box source corresponding to the bundled version:
 # Version pinned in macos/scripts/fetch_singbox.sh (SING_BOX_VERSION)
 git clone https://github.com/SagerNet/sing-box.git
 cd sing-box
-git checkout v1.11.7
+git checkout v1.13.15
 ```
 
 Or download release archives from:

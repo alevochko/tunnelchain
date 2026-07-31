@@ -22,6 +22,9 @@ final class PathsChannel: NSObject {
     case "getConfigFilePath":
       result(AppPaths.configFilePath())
 
+    case "getBundledSingBoxPath":
+      result(AppPaths.bundledSingBoxPath())
+
     case "writeConfig":
       guard let args = call.arguments as? [String: Any],
             let content = args["content"] as? String

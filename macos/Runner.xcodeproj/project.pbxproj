@@ -375,10 +375,12 @@
 			);
 			inputPaths = (
 				"${SRCROOT}/Helper/main.swift",
+				"${SRCROOT}/Runner/Resources/sing-box",
 			);
 			name = "Build Helper";
 			outputPaths = (
 				"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/TunnelChainHelper",
+				"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/sing-box",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;

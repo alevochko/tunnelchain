@@ -1,18 +1,11 @@
-import 'dart:io';
+import 'package:flutter/services.dart';
 
-/// Resolves bundled sing-box binary path for the privileged helper.
-String? resolveBundledSingBoxPath() {
+/// Resolves bundled sing-box via Swift [Bundle.main] (UTF-8 safe).
+Future<String?> resolveBundledSingBoxPath() async {
+  const channel = MethodChannel('com.tunnelchain/paths');
   try {
-    final executable = Platform.resolvedExecutable;
-    final bundleRoot = File(executable).parent.parent.parent;
-    final candidate = File(
-      '${bundleRoot.path}${Platform.pathSeparator}Contents'
-      '${Platform.pathSeparator}Resources'
-      '${Platform.pathSeparator}sing-box',
-    );
-    if (candidate.existsSync()) {
-      return candidate.path;
-    }
+    final path = await channel.invokeMethod<String>('getBundledSingBoxPath');
+    if (path != null && path.isNotEmpty) return path;
   } catch (_) {}
   return null;
 }

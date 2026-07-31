@@ -1,18 +1,30 @@
 import Foundation
 
-/// Development fallback when SMAppService/XPC is unavailable (unsigned debug builds).
-/// Uses a temp bash script in /tmp (readable by root after admin elevation).
+/// Development fallback when SMAppService/XPC is unavailable (unsigned / adhoc builds).
+/// Temp files live under Application Support.
 enum DevPrivilegedBackend {
-  private static let logPath = "/tmp/tunnelchain-dev.log"
+  private static var logPath: String {
+    (writableDirectory() as NSString).appendingPathComponent("dev.log")
+  }
+
+  private static func writableDirectory() -> String {
+    let dir = AppPaths.configDirectory()
+    try? FileManager.default.createDirectory(
+      atPath: dir,
+      withIntermediateDirectories: true
+    )
+    return dir
+  }
 
   static func runBashScript(_ script: String, completion: @escaping (Bool, String) -> Void) {
     let name = "tunnelchain-\(UUID().uuidString).sh"
-    let scriptURL = URL(fileURLWithPath: "/tmp/\(name)")
+    let scriptURL = URL(fileURLWithPath: (writableDirectory() as NSString).appendingPathComponent(name))
+    let logFile = shellQuote(logPath)
     let wrapped = """
     #!/bin/bash
     {
       echo "===== \(ISO8601DateFormatter().string(from: Date())) ====="
-      exec >>\(logPath) 2>&1
+      exec >\(logFile) 2>&1
       set -x
     \(script.replacingOccurrences(of: "#!/bin/bash", with: "").trimmingCharacters(in: .whitespacesAndNewlines))
     }
@@ -45,13 +57,13 @@ enum DevPrivilegedBackend {
         let stdout = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         let stderr = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         let log = (try? String(contentsOfFile: logPath, encoding: .utf8)) ?? ""
+        let runLog = currentRunLog(log)
         let combined = (stderr.isEmpty ? stdout : stderr).trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if process.terminationStatus == 0 {
+        if process.terminationStatus == 0 && scriptSucceeded(log: runLog) {
           completion(true, combined)
         } else {
-          let detail = log.isEmpty ? combined : "\(combined)\n\n--- script log ---\n\(log)"
-          completion(false, humanize(detail))
+          completion(false, formatFailure(osascript: combined, log: runLog))
         }
       } catch {
         completion(false, error.localizedDescription)
@@ -59,14 +71,54 @@ enum DevPrivilegedBackend {
     }
   }
 
-  private static func humanize(_ raw: String) -> String {
-    if raw.contains("-60005") && !raw.contains("script log") && raw.count < 120 {
-      return "Wrong password or dialog cancelled. Press Connect again and enter your macOS administrator password."
+  private static func currentRunLog(_ log: String) -> String {
+    guard let range = log.range(of: "===== ", options: .backwards) else {
+      return log
     }
-    if raw.isEmpty {
-      return "Privileged script failed. See /tmp/tunnelchain-dev.log"
+    return String(log[range.lowerBound...])
+  }
+
+  private static func scriptSucceeded(log: String) -> Bool {
+    let lines = log
+      .split(separator: "\n", omittingEmptySubsequences: false)
+      .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty && !$0.hasPrefix("+") }
+    return lines.last == "ok"
+  }
+
+  private static func formatFailure(osascript: String, log: String) -> String {
+    if log.contains("unknown field \"type\"") {
+      return "sing-box rejected the config DNS format. If `sing-box version` in Terminal "
+        + "shows 1.12+ but Connect still fails, the elevated script may be using a wrong "
+        + "binary path (non-ASCII app path). Rebuild after this update and retry.\n\n"
+        + "--- script log ---\n\(String(log.suffix(3000)))\n\nFull log: \(logPath)"
     }
-    return raw
+    if osascript.contains("User canceled") || osascript.contains("-128") {
+      return "Administrator password dialog was cancelled."
+    }
+    if osascript.contains("ошибка типа 1")
+      || osascript.contains("error type 1")
+      || osascript.contains("execution error")
+    {
+      if !log.isEmpty {
+        let tail = String(log.suffix(4000))
+        return "Privileged script failed:\n\(tail)\n\nFull log: \(logPath)"
+      }
+      return "Privileged script failed (exit 1). See \(logPath) for details."
+    }
+    if osascript.contains("-60005") {
+      return "Administrator authorization failed. If the password was correct, "
+        + "the elevated script could not run — see \(logPath)"
+    }
+    if !log.isEmpty {
+      let tail = String(log.suffix(4000))
+      let prefix = osascript.isEmpty ? "" : "\(osascript)\n\n"
+      return "\(prefix)--- script log ---\n\(tail)\n\nFull log: \(logPath)"
+    }
+    if osascript.isEmpty {
+      return "Privileged script failed before logging. See \(logPath)"
+    }
+    return osascript
   }
 
   private static func shellQuote(_ value: String) -> String {
@@ -74,7 +126,11 @@ enum DevPrivilegedBackend {
   }
 
   private static func writeWorldReadableTemp(name: String, content: String) throws -> URL {
-    let url = URL(fileURLWithPath: "/tmp/\(name)-\(UUID().uuidString)")
+    let url = URL(
+      fileURLWithPath: (writableDirectory() as NSString).appendingPathComponent(
+        "\(name)-\(UUID().uuidString)"
+      )
+    )
     try content.write(to: url, atomically: true, encoding: .utf8)
     try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
     return url
@@ -110,6 +166,31 @@ enum DevPrivilegedBackend {
     """
   }
 
+  private static func resolveSingBoxPath(explicit: String) -> String {
+    if let installed = try? AppPaths.installedSingBoxPath(),
+       FileManager.default.isExecutableFile(atPath: installed) {
+      return installed
+    }
+    if let bundled = AppPaths.bundledSingBoxPath() {
+      return bundled
+    }
+    if !explicit.isEmpty,
+       FileManager.default.isExecutableFile(atPath: explicit) {
+      return explicit
+    }
+    for fallback in ["/opt/homebrew/bin/sing-box", "/usr/local/bin/sing-box"] {
+      if FileManager.default.isExecutableFile(atPath: fallback) {
+        return fallback
+      }
+    }
+    return explicit.isEmpty ? (AppPaths.bundledSingBoxPath() ?? "/usr/local/bin/sing-box") : explicit
+  }
+
+  private static func singBoxPathFileQuoted() throws -> String {
+    let file = try AppPaths.writeSingBoxPathFile()
+    return shellQuote(file)
+  }
+
   static func applyConfig(
     path: String,
     safetyTimeout: Int,
@@ -126,8 +207,14 @@ enum DevPrivilegedBackend {
     let dnsArgs = dns.map(shellQuote).joined(separator: " ")
     let searchArgs = searchDomains.map(shellQuote).joined(separator: " ")
 
-    let singbox = singBoxPath.isEmpty ? "/usr/local/bin/sing-box" : singBoxPath
+    let singbox = resolveSingBoxPath(explicit: singBoxPath)
     let keepAlive = killSwitch ? "false" : "true"
+    do {
+      _ = try AppPaths.installedSingBoxPath()
+    } catch {
+      completion(["success": false, "error": error.localizedDescription, "devMode": true])
+      return
+    }
     let plist = singBoxPlist(
       label: label,
       configPath: path,
@@ -136,8 +223,10 @@ enum DevPrivilegedBackend {
     ).replacingOccurrences(of: "<key>KeepAlive</key><true/>", with: "<key>KeepAlive</key><\(keepAlive)/>")
 
     let tempPlist: URL
+    let singboxPathFileQuoted: String
     do {
       tempPlist = try writeWorldReadableTemp(name: "tunnelchain-singbox", content: plist)
+      singboxPathFileQuoted = try singBoxPathFileQuoted()
     } catch {
       completion(["success": false, "error": error.localizedDescription, "devMode": true])
       return
@@ -145,10 +234,10 @@ enum DevPrivilegedBackend {
 
     let script = """
     set -euo pipefail
-    SB='/usr/local/bin/sing-box'
-    [ -x "$SB" ] || SB='/opt/homebrew/bin/sing-box'
-    [ -x "\(shellQuote(singbox))" ] && SB=\(shellQuote(singbox))
-    [ -x "$SB" ] || { echo 'sing-box not found'; exit 1; }
+    SB="$(tr -d '\\r' < \(singboxPathFileQuoted))"
+    [ -n "$SB" ] && [ -x "$SB" ] || { echo 'sing-box path missing:' "$SB"; exit 1; }
+    xattr -dr com.apple.quarantine "$SB" 2>/dev/null || true
+    chmod +x "$SB" 2>/dev/null || true
     "$SB" check -c \(shellQuote(path))
     cp \(shellQuote(tempPlist.path)) \(shellQuote(plistPath))
     chmod 644 \(shellQuote(plistPath))
@@ -230,17 +319,28 @@ enum DevPrivilegedBackend {
   }
 
   static func getSessionStatus(completion: @escaping ([String: Any]) -> Void) {
-    let label = "com.tunnelchain.app.singbox"
-    runBashScript("""
-    if pgrep -x sing-box >/dev/null 2>&1; then echo running; else echo stopped; fi
-  """) { ok, message in
-      let running = message.contains("running")
-      completion([
-        "sessionActive": running,
-        "singboxRunning": running,
-        "killSwitchEngaged": false,
-        "killSwitchEnabled": false,
-      ])
+    DispatchQueue.global(qos: .utility).async {
+      let process = Process()
+      process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+      process.arguments = ["-x", "sing-box"]
+      process.standardOutput = FileHandle.nullDevice
+      process.standardError = FileHandle.nullDevice
+      let running: Bool
+      do {
+        try process.run()
+        process.waitUntilExit()
+        running = process.terminationStatus == 0
+      } catch {
+        running = false
+      }
+      DispatchQueue.main.async {
+        completion([
+          "sessionActive": running,
+          "singboxRunning": running,
+          "killSwitchEngaged": false,
+          "killSwitchEnabled": false,
+        ])
+      }
     }
   }
 }

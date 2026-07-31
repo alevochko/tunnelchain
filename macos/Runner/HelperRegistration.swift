@@ -52,6 +52,7 @@ enum HelperRegistration {
   static func openLoginItemsSettings() {
     let candidates = [
       "x-apple.systempreferences:com.apple.LoginItems-Settings.extension",
+      "x-apple.systempreferences:com.apple.settings.LoginItems-Settings.extension",
       "x-apple.systempreferences:com.apple.preference.security?Privacy_LoginItems",
     ]
     for raw in candidates {
