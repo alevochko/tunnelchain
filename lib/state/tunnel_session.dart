@@ -4,7 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:tunnel_chain/core_config/config_constants.dart';
+import 'package:tunnel_chain/services/system_dns_policy.dart';
 import 'package:tunnel_chain/services/clash_api_client.dart';
 import 'package:tunnel_chain/services/connect_safety_policy.dart';
 import 'package:tunnel_chain/services/core_controller.dart';
@@ -356,8 +356,8 @@ class TunnelSessionNotifier extends Notifier<TunnelUiState> {
         configJson: configJson,
         safetyTimeoutSec: safetyTimeoutSec,
         killSwitch: tunnel.killSwitch,
-        dnsServers: const [ConfigConstants.dnsPinIp],
-        searchDomains: tunnel.dns.searchDomains,
+        dnsServers: SystemDnsPolicy.serversForConnect(bundle),
+        searchDomains: SystemDnsPolicy.searchDomainsForConnect(bundle),
         clashApiSecret: tunnel.clashApiSecret,
       );
 
